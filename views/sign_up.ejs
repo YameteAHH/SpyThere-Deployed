@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sign Up - SpyThere</title>
+  <link rel="stylesheet" href="/sign_up.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    <div class="spider-container">
+      <img src="/assets/SpiderLogoBlack.png" alt="Spider Logo" class="spider-img">
+    </div>  
+    <h1>SIGN UP</h1>
+
+    <form action="/signup" method="POST" class="main-content">
+      <div>
+        <label for="email">Email:</label>
+        <input type="email" id="email" name="email" required>
+      </div>
+
+      <div>
+        <label for="password">Password:</label>
+        <div class="password-container">
+          <input type="password" id="password" name="password" required>
+          <button type="button" class="toggle-password" onclick="togglePassword('password')">
+            <img src="/assets/eye.svg" alt="Toggle password visibility" id="password-toggle-icon">
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" required>
+      </div>
+
+      <div class="button-container">
+        <button class="spy-btn polygon-shape" type="submit"><span>SPY</span></button>
+      </div>
+    </form>
+    <a href="/" class="back-btn">Back</a>
+  </div>
+  <script>
+    function togglePassword(inputId) {
+      const passwordInput = document.getElementById(inputId);
+      const icon = document.getElementById(inputId + '-toggle-icon');
+      
+      if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        icon.src = '/assets/eye-off.svg';
+      } else {
+        passwordInput.type = 'password';
+        icon.src = '/assets/eye.svg';
+      }
+    }
+  </script>
+</body>
+</html>

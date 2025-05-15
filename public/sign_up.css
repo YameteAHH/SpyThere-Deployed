@@ -1,0 +1,172 @@
+body {
+    background-color: #ff5a5f;
+    font-family: Arial, sans-serif;
+    font-size: 20px;
+    color: white;
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  /* Wrapper to center everything vertically */
+  .page-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: -270px; /* Moves content upward */
+  }
+  
+  /* Spider image styling */
+  .spider-container {
+    margin-top: -15px;
+    margin-bottom: 30px;
+  }
+  
+  .spider-img {
+    width: 220px;
+    height: auto;
+  }
+  
+  /* Header styling */
+  h1 {
+    margin: 20px 0 40px;
+    line-height: 1.2;
+    text-align: center;
+  }
+  
+  /* Form styling */
+  form.main-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  form div {
+    margin-bottom: 15px;
+  }
+  
+  label {
+    display: block;
+    margin-bottom: 5px;
+    text-align: left;
+    width: 230px;
+  }
+  
+  input[type="text"],
+  input[type="email"],
+  input[type="password"] {
+    width: 230px;
+    padding: 10px;
+    border: 3px solid #000000;
+    border-radius: 10px;
+    box-sizing: border-box;
+  }
+  
+  /* SPY button reused from opening page */
+  .button-container {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    margin: 10px;
+    padding: 10px;
+  }
+  
+  .polygon-shape {
+    width: 130px;
+    height: 100px;
+    border: 2px solid black;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-weight: normal;
+    font-size: 22px;
+    cursor: pointer;
+    transition: background 0.3s, transform 0.3s ease-in-out;
+    box-shadow: 0 4px 8px #0000001a;
+    margin: 0 -25px;
+    position: relative;
+  }
+  
+  .polygon-shape span {
+    position: absolute;
+    top: 35%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  
+  .spy-btn {
+    background: #000000;
+    clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+  }
+  
+  .spy-btn:hover {
+    filter: brightness(85%);
+    transform: translateY(-4px);
+  }
+  
+  /* Password container styling */
+  .password-container {
+    position: relative;
+    width: 230px;
+  }
+  
+  .password-container input[type="password"],
+  .password-container input[type="text"] {
+    width: 230px;
+    padding: 10px;
+    padding-right: 35px; /* Make room for the eye icon */
+    border: 3px solid #000000;
+    border-radius: 10px;
+    box-sizing: border-box;
+  }
+  
+  .toggle-password {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    background: none;
+    border: none;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .toggle-password img {
+    width: 20px;
+    height: 20px;
+    opacity: 0.7;
+    transition: opacity 0.3s;
+  }
+  
+  .toggle-password:hover img {
+    opacity: 1;
+  }
+  
+  /* Back button styling */
+  .back-btn {
+    position: fixed;
+    bottom: 30px;
+    left: 30px;
+    padding: 10px 20px;
+    background-color: #000000;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+  }
+  
+  .back-btn:hover {
+    transform: translateY(-2px);
+    background-color: #333333;
+  }
+  

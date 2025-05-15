@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SpyThere</title>
+    <link rel="stylesheet" href="log_in.css" />
+    <style>
+        .password-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .password-container input[type="password"],
+        .password-container input[type="text"] {
+            padding-right: 40px;
+            /* space for the icon */
+            width: 100%;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 10px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .toggle-password img {
+            width: 24px;
+            height: 24px;
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <section>
+            <div class="logo">
+                <img src="assets/SpiderLogoBlack.png" alt="SpyThere Logo">
+            </div>
+            <form class="login" action="/login" method="post">
+                <div class="login-form">
+                    <h1 id="login">LOG IN</h1>
+                    <% if (typeof error !=='undefined' && error) { %>
+                        <p style="color: red; font-weight: bold;">
+                            <%= error %>
+                        </p>
+                        <% } %>
+                            <div id="email-form" class="p-e-form">
+                                <label for="email">Email:</label>
+                                <input type="email" name="email" id="email" required />
+                            </div>
+                            <div id="password-form" class="p-e-form">
+                                <label for="password">Password:</label>
+                                <div class="password-container">
+                                    <input type="password" name="password" id="password" required />
+                                    <button type="button" class="toggle-password" onclick="togglePassword('password')">
+                                        <img src="/assets/eye.svg" alt="Toggle password visibility" id="password-toggle-icon" />
+                                        </button>
+                                        </div>
+                                        </div>
+                                        <input class="polygon-shape" type="submit" value="SPY" />
+                                        </div>
+                                        </form>
+                                        </section>
+                                        </main>
+    <a href="/" class="back-btn">Back</a>
+
+    <script>
+        function togglePassword(inputId) {
+            const passwordInput = document.getElementById(inputId);
+            const icon = document.getElementById(inputId + '-toggle-icon');
+
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                icon.src = '/assets/eye-off.svg';
+            } else {
+                passwordInput.type = 'password';
+                icon.src = '/assets/eye.svg';
+            }
+            }
+        </script>
+</body>
+
+</html>

@@ -1,0 +1,109 @@
+body {
+  font-size: 25px;
+  font-family: sans-serif;
+  text-align: center;
+  background-color: #ffffff;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.spider-container {
+  margin-top: -15px;
+  padding-top: 0;
+  margin-bottom: 30px;
+}
+
+.spider-img {
+  width: 200px;
+  height: auto;
+  display: block;
+  margin-top: 0;
+}
+
+.main-content h1 {
+  margin: 20px 0 40px;
+  line-height: 1.2;
+}
+
+.spythere {
+  font-weight: bold;
+  display: block;
+}
+
+.button-container {
+  display: flex;
+  justify-content: center;
+  gap: 0px;
+  margin: 0;
+  padding: 0;
+}
+
+.polygon-shape {
+  width: 170px;
+  height: 150px;
+  border: 2px solid black;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-weight: normal;
+  font-size: 22px;
+  cursor: pointer;
+  transition: background 0.3s, transform 0.3s ease-in-out;
+  box-shadow: 0 4px 8px #0000001a;
+  margin: 0 -25px;
+  position: relative;
+}
+
+.polygon-shape span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%); 
+}
+
+.login-btn {
+  background: #F94F60;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.login-btn:hover {
+  filter: brightness(85%);
+  transform: translateY(-4px);
+}
+
+.spy-btn {
+  background: #000000;
+  clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+}
+
+.spy-btn:hover {
+  filter: brightness(85%);
+  transform: translateY(-4px);
+}
+
+.signup-btn {
+  background: #F94F60;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.signup-btn:hover {
+  filter: brightness(85%);
+  transform: translateY(-4px);
+}
+
+/* Adjusting text positions */
+.login-btn span {
+  top: 70%; 
+}
+
+.spy-btn span {
+  top: 35%; 
+}
+
+.signup-btn span {
+  top: 70%; 
+}
