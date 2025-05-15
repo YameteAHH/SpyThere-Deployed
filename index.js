@@ -25,7 +25,9 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Trust proxy for secure cookies in production
-app.set('trust proxy', 1);
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 
 // Middleware
 app.set('view engine', 'ejs');
@@ -43,14 +45,14 @@ app.use(session({
     ttl: 30 * 24 * 60 * 60 * 1000 // 30 days in milliseconds
   }),
   secret: process.env.SESSION_SECRET || 'spythere-secret-key',
-  resave: true, // Change to true to ensure session is saved on every request
+  resave: true, // Changed to true to ensure session is saved on every request
   saveUninitialized: false,
   rolling: true, // Reset cookie expiration on every response
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     httpOnly: true,
-    sameSite: 'lax'
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' // Use 'none' in production for cross-site requests
   }
 }));
 
@@ -181,29 +183,58 @@ function isAuthenticated(req) {
 function authenticator(req, res, next) {
   console.log(`Authentication check for ${req.path}`);
   console.log(`Session ID: ${req.session?.id || 'no session'}`);
+  console.log(`Session cookie: ${req.session?.cookie ? 'exists' : 'missing'}`);
   console.log(`Has user object: ${!!(req.session && req.session.user)}`);
 
-  if (req.session && req.session.user && req.session.user.username) {
-    console.log(`User authenticated: ${req.session.user.username}`);
+  try {
+    if (req.session && req.session.user && req.session.user.username) {
+      console.log(`User authenticated: ${req.session.user.username}`);
 
-    // Extend session life
-    req.session.touch();
-    req.session._garbage = Date.now();
-    req.session.cookie.expires = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000));
+      // Extend session life
+      try {
+        req.session.touch();
+        req.session._garbage = Date.now();
+        req.session.cookie.expires = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000));
 
-    next();
-  } else {
-    // For API requests, return JSON error
-    if (req.path.startsWith('/api/') && !req.path.includes('/api/session-status')) {
-      console.log('API authentication failed');
-      return res.status(401).json({
-        error: 'Authentication required',
-        redirect: '/login'
+        // For important operations, save the session immediately
+        if (req.method === 'POST' || req.path.includes('/api/')) {
+          req.session.save(err => {
+            if (err) {
+              console.error('Warning: Error saving session during authentication:', err);
+              // Continue despite error to avoid breaking functionality
+            }
+          });
+        }
+      } catch (sessionError) {
+        console.error('Error updating session in authenticator:', sessionError);
+        // Continue despite error
+      }
+
+      next();
+    } else {
+      // For API requests, return JSON error
+      if (req.path.startsWith('/api/') && !req.path.includes('/api/session-status')) {
+        console.log('API authentication failed');
+        return res.status(401).json({
+          error: 'Authentication required',
+          redirect: '/login'
+        });
+      }
+
+      // For page requests, redirect to login
+      console.log('Redirecting to login page');
+      res.redirect('/login');
+    }
+  } catch (error) {
+    console.error('Unexpected error in authenticator middleware:', error);
+    // For API requests
+    if (req.path.startsWith('/api/')) {
+      return res.status(500).json({
+        error: 'Authentication error',
+        details: error.message
       });
     }
-
-    // For page requests, redirect to login
-    console.log('Redirecting to login page');
+    // For page requests
     res.redirect('/login');
   }
 }
@@ -346,15 +377,39 @@ app.get('/home', authenticator, async (req, res) => {
 
 app.post('/submit-post', upload.single('media'), async (req, res) => {
   try {
+    console.log('Starting post submission process');
+    console.log('Session ID:', req.session?.id);
+    console.log('Session user:', req.session?.user);
+
     // Check authentication
     if (!req.session || !req.session.user) {
-      return res.redirect('/login');
+      console.error('Session validation failed in submit-post');
+      return res.status(401).json({
+        error: 'Authentication required',
+        redirect: '/login'
+      });
     }
 
     const username = req.session.user.username;
     console.log(`Processing post submission from user: ${username}`);
     console.log('Request body:', req.body);
     console.log('File:', req.file ? `${req.file.originalname} (${req.file.size} bytes)` : 'No file uploaded');
+
+    // Explicitly extend the session
+    req.session.cookie.expires = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000));
+
+    // Save session before starting upload
+    await new Promise((resolve, reject) => {
+      req.session.save(err => {
+        if (err) {
+          console.error('Error saving session before media upload:', err);
+          reject(err);
+        } else {
+          console.log('Session saved successfully before upload');
+          resolve();
+        }
+      });
+    });
 
     const post = req.body.post || '';
     let mediaUrl = null;
@@ -363,6 +418,7 @@ app.post('/submit-post', upload.single('media'), async (req, res) => {
     if (req.file) {
       try {
         mediaUrl = await uploadFileToS3(req.file);
+        console.log('Media uploaded to S3:', mediaUrl);
       } catch (uploadError) {
         console.error('Media upload failed:', uploadError.message);
         return res.status(500).json({
@@ -392,11 +448,25 @@ app.post('/submit-post', upload.single('media'), async (req, res) => {
     await push(postsRef, newPost);
     console.log('Post saved successfully');
 
-    // Touch the session to keep it alive
-    req.session.touch();
+    // Save the session again after the post has been saved
+    await new Promise((resolve, reject) => {
+      req.session.save(err => {
+        if (err) {
+          console.error('Error saving session after post creation:', err);
+          reject(err);
+        } else {
+          console.log('Session saved successfully after post creation');
+          resolve();
+        }
+      });
+    });
 
     // Redirect or return success response
-    res.redirect('/home');
+    if (req.xhr || req.headers.accept.indexOf('json') > -1) {
+      return res.status(200).json({ success: true, redirect: '/home' });
+    } else {
+      return res.redirect('/home');
+    }
   } catch (error) {
     console.error('Error in post submission:', error);
     res.status(500).json({
@@ -874,7 +944,19 @@ app.post('/api/likes', authenticator, async (req, res) => {
     
     // Extend session
     req.session.cookie.expires = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000));
-    req.session.save();
+
+    // Explicitly save the session and wait for completion
+    await new Promise((resolve, reject) => {
+      req.session.save(err => {
+        if (err) {
+          console.error('Error saving session after like action:', err);
+          reject(err);
+        } else {
+          console.log('Session saved successfully after like action');
+          resolve();
+        }
+      });
+    });
 
     res.json({ 
       success: true,
@@ -1057,21 +1139,42 @@ app.delete('/api/posts/:postId', authenticator, async (req, res) => {
 
 // Add a route to validate session status
 app.get('/api/session-status', (req, res) => {
+  console.log('Session status check');
+  console.log('Session ID:', req.session?.id);
+  console.log('Session cookie:', req.session?.cookie);
+  console.log('User object:', req.session?.user);
+
   if (req.session && req.session.user) {
     // Touch the session to keep it alive
-    req.session.touch();
+    try {
+      req.session.touch();
+      req.session.cookie.expires = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000));
+      req.session.save(err => {
+        if (err) {
+          console.error('Error saving session during status check:', err);
+        }
+      });
+    } catch (sessionError) {
+      console.error('Error updating session in status check:', sessionError);
+    }
 
     // Return user info without sensitive data
     res.json({
       authenticated: true,
       username: req.session.user.username,
-      sessionId: req.session.id
+      sessionId: req.session.id,
+      cookieMaxAge: req.session.cookie.maxAge,
+      cookieExpires: req.session.cookie.expires,
+      secure: req.session.cookie.secure,
+      sameSite: req.session.cookie.sameSite
     });
   } else {
     // Not authenticated
     res.json({
       authenticated: false,
-      message: 'User not authenticated'
+      message: 'User not authenticated',
+      sessionExists: !!req.session,
+      cookieHeader: req.headers.cookie ? 'Present' : 'Missing'
     });
   }
 });

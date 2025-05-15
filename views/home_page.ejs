@@ -780,6 +780,7 @@
               
               if (!response.ok) {
                 const errorText = await response.text();
+                if (handleApiError(response.status, errorText)) return;
                 throw new Error(`Server returned ${response.status}: ${errorText}`);
               }
               
@@ -1324,6 +1325,53 @@
       document.querySelectorAll('li[data-post-id]').forEach(postItem => {
         initializePostEventListeners(postItem);
       });
+
+      // Setup document ready functions
+      document.addEventListener('DOMContentLoaded', function () {
+        initializePostSubmission();
+        initializeCommentSystem();
+        initializeLikeFunctionality();
+        initializeEditDeleteMenus();
+        checkSessionStatus();
+      });
+
+      // Session status check - verify authentication is still valid
+      async function checkSessionStatus() {
+        try {
+          const response = await fetch('/api/session-status');
+          const data = await response.json();
+
+          if (!data.authenticated) {
+            console.error('User not authenticated, redirecting to login');
+            setTimeout(() => {
+              window.location.href = '/login';
+            }, 500);
+          } else {
+            // Schedule periodic check
+            setTimeout(checkSessionStatus, 60000); // Check every minute
+          }
+        } catch (error) {
+          console.error('Error checking session status:', error);
+        }
+      }
+
+      // Handle authentication errors from API calls
+      function handleApiError(error, errorText) {
+        console.error('API error:', error, errorText);
+
+        // Check for authentication errors
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData && errorData.error === 'Authentication required') {
+            alert('Your session has expired. Please log in again.');
+            window.location.href = '/login';
+            return true;
+          }
+        } catch (e) {
+          // Not a JSON error or not an auth error
+        }
+        return false;
+      }
     });
   </script>
 </body>
