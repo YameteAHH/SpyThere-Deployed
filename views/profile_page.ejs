@@ -264,10 +264,7 @@
 
   <script src="/scripts/index.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      // Check session status immediately on page load
-      checkSessionStatus();
-      
+      document.addEventListener('DOMContentLoaded', function () {
       // Post edit and delete functionality
       const editPostBtns = document.querySelectorAll('.edit-post-btn');
       const deletePostBtns = document.querySelectorAll('.delete-post-btn');
@@ -432,7 +429,6 @@
 
               if (!response.ok) {
                 const errorText = await response.text();
-                if (handleApiError(response.status, errorText)) return;
                 throw new Error(`Server returned ${response.status}: ${errorText}`);
               }
 
@@ -448,10 +444,6 @@
               }
             } catch (error) {
               console.error('Error updating like:', error);
-              if (error.message && error.message.includes('Authentication required')) {
-                window.location.href = '/login';
-                return;
-              }
               alert(`Failed to update like: ${error.message}`);
             }
           });
@@ -556,7 +548,6 @@
             if (!response.ok) {
               const errorText = await response.text();
               console.error('Server error response:', errorText);
-              if (handleApiError(response.status, errorText)) return;
               throw new Error(`Server returned ${response.status}: ${errorText}`);
             }
 
@@ -765,7 +756,6 @@
             if (!response.ok) {
               const errorText = await response.text();
               console.error('Server error response:', errorText);
-              if (handleApiError(response.status, errorText)) return;
               throw new Error(`Server returned ${response.status}: ${errorText}`);
             }
 
@@ -920,7 +910,6 @@
 
               if (!response.ok) {
                 const errorText = await response.text();
-                if (handleApiError(response.status, errorText)) return;
                 throw new Error(`Server returned ${response.status}: ${errorText}`);
               }
 
@@ -941,10 +930,6 @@
 
             } catch (error) {
               console.error('Error updating like:', error);
-              if (error.message && error.message.includes('Authentication required')) {
-                window.location.href = '/login';
-                return;
-              }
               alert(`Failed to update like: ${error.message}`);
             }
           });
@@ -1360,50 +1345,6 @@
         icon.src = '/assets/eye.svg';
       }
     }
-
-  // Session status check - verify authentication is still valid
-  async function checkSessionStatus() {
-    try {
-      const response = await fetch('/api/session-status');
-      const data = await response.json();
-
-      if (!data.authenticated) {
-        console.error('User not authenticated, redirecting to login');
-        window.location.href = '/login';
-        return false;
-      }
-
-      // Schedule periodic check
-      setTimeout(checkSessionStatus, 30000); // Check every 30 seconds
-      return true;
-    } catch (error) {
-      console.error('Error checking session status:', error);
-      return false;
-    }
-  }
-
-  // Handle authentication errors from API calls
-  function handleApiError(error, errorText) {
-    console.error('API error:', error, errorText);
-
-    // Check for authentication errors
-    try {
-      const errorData = JSON.parse(errorText);
-      if (errorData && errorData.error === 'Authentication required') {
-        alert('Your session has expired. Please log in again.');
-        window.location.href = '/login';
-        return true;
-      }
-    } catch (e) {
-      // Not a JSON error or not an auth error
-    }
-    return false;
-  }
-
-  // Function to initialize UI components 
-  function initializeUI() {
-    // Your existing initialization code goes here
-  }
   </script>
 </body>
 </html>
