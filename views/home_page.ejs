@@ -240,33 +240,65 @@
     document.addEventListener('DOMContentLoaded', function() {
       console.log('Page loaded, initializing functionality');
 
-      // // Initialize Developers Modal functionality
-      // const logo = document.querySelector('header.header .logo');
-      // const developersModal = document.getElementById('developers-modal');
-      // const closeDevelopersBtn = document.getElementById('close-developers-modal');
+      // Check session immediately and periodically
+      checkSessionStatus();
+      
+      // Rest of your initialization code
+      initializeDevelopersModal();
+      initializeCommentSystem();
+      initializeLikeFunctionality();
+      initializeEditDeleteMenus();
+    });
+      
+            // Session status check - verify authentication is still valid
+            async function checkSessionStatus() {
+              try {
+                console.log('Checking session status...');
+                const response = await fetch('/api/session-status');
+                console.log('Session status response:', response.status);
 
-      // // Open developers modal when logo is clicked
-      // if (logo) {
-      //   logo.addEventListener('click', function () {
-      //     developersModal.style.display = 'block';
-      //   });
-      // }
+                if (!response.ok) {
+                  console.error('Session status check failed with status:', response.status);
+                  window.location.href = '/login';
+                  return;
+                }
 
-      // // Close developers modal when close button is clicked
-      // if (closeDevelopersBtn) {
-      //   closeDevelopersBtn.addEventListener('click', function () {
-      //     developersModal.style.display = 'none';
-      //   });
-      // }
+                const data = await response.json();
+                console.log('Session data:', data);
 
-      // // Close developers modal when clicking outside
-      // window.addEventListener('click', function (e) {
-      //   if (e.target === developersModal) {
-      //     developersModal.style.display = 'none';
-      //   }
-      // });
+                if (!data.authenticated) {
+                  console.error('User not authenticated, redirecting to login');
+                  window.location.href = '/login';
+                } else {
+                  // Schedule periodic check - more frequent in production
+                  const checkInterval = data.environment === 'production' ? 30000 : 60000;
+                  console.log(`Scheduling next session check in ${checkInterval / 1000} seconds`);
+                  setTimeout(checkSessionStatus, checkInterval);
+                }
+              } catch (error) {
+                console.error('Error checking session status:', error);
+                // Try again in 10 seconds if there was an error
+                setTimeout(checkSessionStatus, 10000);
+              }
+            }
+          
+            // Handle API errors with consistent auth error handling
+            function handleApiError(status, errorText) {
+              try {
+                const errorData = JSON.parse(errorText);
+                if (errorData.error === 'Authentication required') {
+                  console.error('Authentication required, redirecting to login');
+                  window.location.href = '/login';
+                  return true;
+                }
+              } catch (e) {
+                // Not JSON or not auth error
+              }
+              return false;
+            }
     
-      // Initialize Developers Modal functionality
+            // Initialize developers modal functionality
+            function initializeDevelopersModal() {
       const logo = document.querySelector('header.header .logo');
       const developersModal = document.getElementById('developers-modal');
       const closeDevelopersBtn = document.getElementById('close-developers-modal');
@@ -291,6 +323,7 @@
           developersModal.style.display = 'none';
         }
       });
+          }
 
       // Initialize comment functionality
       const commentBtns = document.querySelectorAll('.comment-btn');
@@ -299,32 +332,32 @@
       const cancelCommentBtn = document.querySelector('.comment-actions .modal-btn:first-child');
       const commentListSection = document.querySelector('.comment-list-section');
       const modalCommentCount = document.querySelector('.modal-comment-count');
-      
+
       // Current post being commented on
       let currentPostId = null;
-      
+
       // Open comment modal when comment icon is clicked
       commentBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function () {
           const postItem = this.closest('li');
           currentPostId = postItem.dataset.postId;
           console.log('Opening comments for post:', currentPostId);
           commentModal.style.display = 'block';
-          
+
           // Clear previous comments
           commentListSection.innerHTML = '';
-          
+
           // Show loading indicator
           const loadingMsg = document.createElement('div');
           loadingMsg.className = 'loading-comments';
           loadingMsg.textContent = 'Loading comments';
           commentListSection.appendChild(loadingMsg);
-          
+
           // Fetch comments from server for this post
           fetchComments(currentPostId);
         });
       });
-      
+
       // Fetch comments from the server
       async function fetchComments(postId) {
         try {
@@ -332,23 +365,23 @@
           // Encode the postId to handle special characters in the URL
           const encodedPostId = encodeURIComponent(postId);
           const response = await fetch(`/api/comments/${encodedPostId}`);
-          
+
           if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`Server returned ${response.status}: ${errorText}`);
           }
-          
+
           const data = await response.json();
           console.log('Comments received:', data);
-          
+
           // Clear loading message
           commentListSection.innerHTML = '';
-          
+
           // Update comment counts
           const commentCount = data.comments ? data.comments.length : 0;
           updateCommentCount(postId, commentCount);
           modalCommentCount.textContent = `(${commentCount})`;
-          
+
           if (data.comments && data.comments.length > 0) {
             // Display comments
             data.comments.forEach(comment => {
@@ -368,598 +401,598 @@
           modalCommentCount.textContent = '(0)';
         }
       }
-      
+
       // Helper function to create comment element
       function createCommentElement(comment) {
         const commentElement = document.createElement('div');
         commentElement.className = 'comment-item';
         commentElement.dataset.commentId = comment.id;
-        
+
         // Check if this comment is from the current user
         // We'll check for a match on the author name
         const isOwnComment = comment.author === '<%= username %>';
-        
+
         // Add edit and delete buttons if it's the user's own comment
         const actionButtons = isOwnComment ? `
-          <div class="comment-actions-container">
-            <img src="/assets/Edit_Icon.png" alt="Edit" class="comment-action-icon edit-comment-btn">
-            <img src="/assets/Delete_Icon.png" alt="Delete" class="comment-action-icon delete-comment-btn">
-          </div>
-        ` : '';
-        
+        <div class="comment-actions-container">
+          <img src="/assets/Edit_Icon.png" alt="Edit" class="comment-action-icon edit-comment-btn">
+          <img src="/assets/Delete_Icon.png" alt="Delete" class="comment-action-icon delete-comment-btn">
+        </div>
+      ` : '';
+
         // Check if comment text is longer than 150 characters
         const commentText = comment.text;
         const needsTruncation = commentText.length > 150;
 
         let commentHTML = `
-          <div class="comment-author">${comment.author}</div>
-        `;
+        <div class="comment-author">${comment.author}</div>
+      `;
 
         if (needsTruncation) {
           commentHTML += `
-            <div class="comment-text truncated-text">${commentText}</div>
-            <span class="comment-see-more">See more...</span>
-          `;
+          <div class="comment-text truncated-text">${commentText}</div>
+          <span class="comment-see-more">See more...</span>
+        `;
         } else {
           commentHTML += `
-            <div class="comment-text">${commentText}</div>
-          `;
+          <div class="comment-text">${commentText}</div>
+        `;
         }
 
         commentHTML += actionButtons;
 
         commentElement.innerHTML = commentHTML;
-        
+
         // Add event listeners for edit and delete buttons if it's the user's own comment
         if (isOwnComment) {
           setTimeout(() => {
             const editBtn = commentElement.querySelector('.edit-comment-btn');
             const deleteBtn = commentElement.querySelector('.delete-comment-btn');
-            
+
             if (editBtn) {
-              editBtn.addEventListener('click', function() {
+              editBtn.addEventListener('click', function () {
                 handleEditComment(comment.id, comment.text);
               });
             }
-            
+
             if (deleteBtn) {
-              deleteBtn.addEventListener('click', function() {
+              deleteBtn.addEventListener('click', function () {
                 handleDeleteComment(comment.id);
               });
             }
           }, 0);
         }
-        
+
         // Add see more functionality if needed
         if (needsTruncation) {
           const seeMoreBtn = commentElement.querySelector('.comment-see-more');
           const commentTextDiv = commentElement.querySelector('.comment-text');
 
-          seeMoreBtn.addEventListener('click', function () {
-            commentTextDiv.classList.toggle('expanded');
-            this.textContent = commentTextDiv.classList.contains('expanded') ? 'See less' : 'See more...';
-          });
-        }
-        
-        return commentElement;
-      }
-      
-      // Update comment count for a specific post
-      function updateCommentCount(postId, count) {
-        const countElement = document.querySelector(`.comment-count[data-post-id="${postId}"]`);
-        if (countElement) {
-          countElement.textContent = count;
-        }
-      }
-      
-      // Close comment modal
-      function closeCommentModal() {
-        commentModal.style.display = 'none';
-        currentPostId = null;
-      }
-      
-      closeCommentBtn.addEventListener('click', closeCommentModal);
-      cancelCommentBtn.addEventListener('click', closeCommentModal);
-      
-      // Close modal when clicking outside
-      commentModal.addEventListener('click', function(e) {
-        if (e.target === commentModal) {
-          closeCommentModal();
-        }
-      });
-      
-      // Handle editing a comment
-      async function handleEditComment(commentId, currentText) {
-        console.log('Editing comment:', commentId);
-        
-        // Show edit comment modal
-        const editCommentModal = document.getElementById('edit-comment-modal');
-        const editCommentTextarea = document.getElementById('edit-comment-text');
-        const commentIdInput = document.getElementById('edit-comment-id');
-        const postIdInput = document.getElementById('edit-comment-post-id');
-        
-        // Set current values
-        editCommentTextarea.value = currentText;
-        commentIdInput.value = commentId;
-        postIdInput.value = currentPostId;
-        
-        // Show the modal
-        editCommentModal.style.display = 'block';
-        editCommentTextarea.focus();
-      }
-      
-      // Handle deleting a comment
-      async function handleDeleteComment(commentId) {
-        console.log('Opening delete confirmation for comment:', commentId);
-        
-        // Set the comment ID in the hidden input
-        document.getElementById('delete-comment-id').value = commentId;
-        document.getElementById('delete-comment-post-id').value = currentPostId;
-        
-        // Show the modal
-        const deleteConfirmModal = document.getElementById('delete-confirm-modal');
-        deleteConfirmModal.style.display = 'block';
-      }
-      
-      // Post comment button
-      const postCommentBtn = document.querySelector('.comment-actions .modal-btn:last-child');
-      postCommentBtn.addEventListener('click', async function() {
-        const commentTextarea = document.querySelector('.comment-input-section textarea');
-        const commentText = commentTextarea.value;
-        
-        if (commentText.trim() === '' || !currentPostId) {
-          console.log('Empty comment or no post ID');
-          return;
-        }
-        
-        console.log('Posting comment to post:', currentPostId);
-        
-        try {
-          // Show posting indicator
-          postCommentBtn.disabled = true;
-          postCommentBtn.textContent = 'Posting...';
-          
-          // Send comment to server
-          const response = await fetch('/api/comments', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              postId: currentPostId,
-              text: commentText
-            })
-          });
-          
-          console.log('Response status:', response.status);
-          
-          if (!response.ok) {
-            const errorData = await response.text();
-            console.error('Server error response:', errorData);
-            throw new Error(`Server returned ${response.status}: ${errorData}`);
-          }
-          
-          const newComment = await response.json();
-          console.log('Comment posted successfully:', newComment);
-          
-          // Clear any "no comments" message
-          const noCommentsMsg = commentListSection.querySelector('.no-comments-message');
-          if (noCommentsMsg) {
-            commentListSection.removeChild(noCommentsMsg);
-          }
-          
-          // Add to UI
-          const newCommentElement = createCommentElement(newComment);
-          commentListSection.prepend(newCommentElement);
-          
-          // Clear the input
-          commentTextarea.value = '';
-          
-          // Update comment count
-          const currentCount = parseInt(modalCommentCount.textContent.replace(/[()]/g, '')) || 0;
-          const newCount = currentCount + 1;
-          modalCommentCount.textContent = `(${newCount})`;
-          updateCommentCount(currentPostId, newCount);
-          
-        } catch (error) {
-          console.error('Error posting comment:', error);
-          alert(`Failed to post comment: ${error.message}`);
-        } finally {
-          // Reset button state
-          postCommentBtn.disabled = false;
-          postCommentBtn.textContent = 'Post Comment';
-        }
-      });
-      
-      // Initialize comment counts on page load
-      function initializeCommentCounts() {
-        const commentCountElements = document.querySelectorAll('.comment-count');
-        commentCountElements.forEach(async countElement => {
-          const postId = countElement.dataset.postId;
-          if (postId) {
-            try {
-              const encodedPostId = encodeURIComponent(postId);
-              const response = await fetch(`/api/comments/${encodedPostId}`);
-              
-              if (response.ok) {
-                const data = await response.json();
-                const commentCount = data.comments ? data.comments.length : 0;
-                countElement.textContent = commentCount;
-              }
-            } catch (error) {
-              console.error(`Error fetching comment count for post ${postId}:`, error);
-            }
-          }
-        });
-      }
-      
-      // Initialize comment counts when page loads
-      initializeCommentCounts();
-      
-      // Setup edit comment modal functionality
-      const editCommentModal = document.getElementById('edit-comment-modal');
-      const closeEditCommentBtn = document.getElementById('close-edit-comment-modal');
-      const cancelEditCommentBtn = document.getElementById('cancel-edit-comment-btn');
-      const editCommentForm = document.getElementById('edit-comment-form');
-      
-      // Close edit comment modal function
-      function closeEditCommentModal() {
-        editCommentModal.style.display = 'none';
-      }
-      
-      // Close edit comment modal when X button is clicked
-      if (closeEditCommentBtn) {
-        closeEditCommentBtn.addEventListener('click', closeEditCommentModal);
-      }
-      
-      // Close edit comment modal when cancel button is clicked
-      if (cancelEditCommentBtn) {
-        cancelEditCommentBtn.addEventListener('click', closeEditCommentModal);
-      }
-      
-      // Close edit comment modal when clicking outside
-      window.addEventListener('click', function(e) {
-        if (e.target === editCommentModal) {
-          closeEditCommentModal();
-        }
-      });
-      
-      // Handle edit comment form submission
-      if (editCommentForm) {
-        editCommentForm.addEventListener('submit', async function(e) {
-          e.preventDefault();
-          
-          const commentId = document.getElementById('edit-comment-id').value;
-          const postId = document.getElementById('edit-comment-post-id').value;
-          const commentText = document.getElementById('edit-comment-text').value.trim();
-          
-          if (!commentText) {
-            alert('Comment cannot be empty');
-            return;
-          }
-          
-          try {
-            // Submit the edited comment
-            const response = await fetch(`/api/comments/${postId}/${commentId}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                text: commentText
-              })
-            });
-            
-            if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`Server returned ${response.status}: ${errorText}`);
-            }
-            
-            const updatedComment = await response.json();
-            console.log('Comment updated successfully:', updatedComment);
-            
-            // Update the comment in the UI
-            const commentElement = document.querySelector(`.comment-item[data-comment-id="${commentId}"]`);
-            if (commentElement) {
-              const commentTextElement = commentElement.querySelector('.comment-text');
-              const needsTruncation = commentText.length > 150;
-              
-              if (commentTextElement) {
-                // Remove existing classes and set them based on the new state
-                commentTextElement.className = 'comment-text';
-                if (needsTruncation) {
-                  commentTextElement.classList.add('truncated-text');
-                }
-                commentTextElement.textContent = commentText;
-              }
+                                seeMoreBtn.addEventListener('click', function () {
+                                  commentTextDiv.classList.toggle('expanded');
+                                  this.textContent = commentTextDiv.classList.contains('expanded') ? 'See less' : 'See more...';
+                                });
+                              }
 
-              // Handle see more button
-              let seeMoreBtn = commentElement.querySelector('.comment-see-more');
+                              return commentElement;
+                            }
 
-              if (needsTruncation) {
-                if (!seeMoreBtn) {
-                  // Create new see more button if it doesn't exist
-                  seeMoreBtn = document.createElement('span');
-                  seeMoreBtn.className = 'comment-see-more';
-                  seeMoreBtn.textContent = 'See more...';
+                            // Update comment count for a specific post
+                            function updateCommentCount(postId, count) {
+                              const countElement = document.querySelector(`.comment-count[data-post-id="${postId}"]`);
+                              if (countElement) {
+                                countElement.textContent = count;
+                              }
+                            }
 
-                  // Add see more functionality
-                  seeMoreBtn.addEventListener('click', function () {
-                    commentTextElement.classList.toggle('expanded');
-                    this.textContent = commentTextElement.classList.contains('expanded') ? 'See less' : 'See more...';
-                  });
+                            // Close comment modal
+                            function closeCommentModal() {
+                              commentModal.style.display = 'none';
+                              currentPostId = null;
+                            }
 
-                  // Insert after the comment text element
-                  commentTextElement.after(seeMoreBtn);
-                }
-              } else if (seeMoreBtn) {
-                // Remove see more button if it's not needed anymore
-                seeMoreBtn.remove();
-              }
-            }
-            
-            // Close the modal
-            closeEditCommentModal();
-            
-          } catch (error) {
-            console.error('Error updating comment:', error);
-            alert(`Failed to update comment: ${error.message}`);
-          }
-        });
-      }
-      
-      // Like Modal Functionality - Check if like API is available
-      async function checkLikeApiAvailability() {
-        try {
-          // Try to fetch a test like to see if the API exists
-          const response = await fetch('/api/likes/test-availability');
-          // Even if it's a 404 for the specific post, if we get a proper JSON response
-          // with an error message about the post not found, the API itself exists
-          const isAvailable = response.status !== 404 || (await response.text()).includes('Post ID');
-          return isAvailable;
-        } catch (error) {
-          console.warn('Like API not available:', error);
-          return false;
-        }
-      }
-      
-      // Initialize like functionality
-      async function initializeLikeFunctionality() {
-        // Check if the like API is available
-        const isLikeApiAvailable = await checkLikeApiAvailability();
-        console.log('Like API available:', isLikeApiAvailable);
-        
-        if (!isLikeApiAvailable) {
-          // Hide like counts if API is not available
-          document.querySelectorAll('.like-count').forEach(el => el.style.display = 'none');
-          return;
-        }
-        
-        const likeBtns = document.querySelectorAll('.like-btn');
-        const likeModal = document.querySelector('.like-modal');
-        const closeLikeBtn = document.querySelector('.close-like-modal');
-        const likeListSection = document.querySelector('.like-list-section');
-        const modalLikeCount = document.querySelector('.modal-like-count');
-        
-        // Current post being viewed for likes
-        let currentLikePostId = null;
-        
-        // Remove any existing event listeners
-        likeBtns.forEach(btn => {
-          const newBtn = btn.cloneNode(true);
-          btn.parentNode.replaceChild(newBtn, btn);
-        });
+                            closeCommentBtn.addEventListener('click', closeCommentModal);
+                            cancelCommentBtn.addEventListener('click', closeCommentModal);
 
-        // Get the fresh references after replacing the buttons
-        const freshLikeBtns = document.querySelectorAll('.like-btn');
-        
-        // Toggle like status when like icon is clicked
-        freshLikeBtns.forEach(btn => {
-          btn.addEventListener('click', async function (e) {
-            e.preventDefault(); // Prevent any default behavior
-            e.stopPropagation(); // Stop event propagation
-        
-            const postItem = this.closest('li');
-            const postId = postItem.dataset.postId;
-            const isLiked = this.dataset.liked === 'true';
-            
-            console.log('Like button clicked for post:', postId, 'Current liked status:', isLiked);
-
-            try {
-              // Send like request to server first
-              const response = await fetch('/api/likes', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  postId: postId,
-                  liked: !isLiked
-                })
-              });
-              
-              if (!response.ok) {
-                const errorText = await response.text();
-                if (handleApiError(response.status, errorText)) return;
-                throw new Error(`Server returned ${response.status}: ${errorText}`);
-              }
-              
-              const data = await response.json();
-              console.log('Like updated:', data);
-              
-              // Only update UI if server request was successful
-              this.dataset.liked = !isLiked ? 'true' : 'false';
-
-              // Update icon based on new like status
-              if (!isLiked) {
-                this.src = '/assets/Liked_Icon.png';
-                this.alt = 'Unlike';
-              } else {
-                this.src = '/assets/Like_Icon.png';
-                this.alt = 'Like';
-              }
-              
-              // Update like count in UI
-              updateLikeCount(postId, data.likeCount);
-
-            } catch (error) {
-              console.error('Error updating like:', error);
-              alert(`Failed to update like: ${error.message}`);
-            }
-          });
-        });
-        
-        // Show likes modal when clicking on like count
-        document.querySelectorAll('.like-count').forEach(countElement => {
-          countElement.addEventListener('click', function() {
-            const postId = this.dataset.postId;
-            currentLikePostId = postId;
-            likeModal.style.display = 'block';
-            
-            // Clear previous likes
-            likeListSection.innerHTML = '';
-            
-            // Show loading indicator
-            const loadingMsg = document.createElement('div');
-            loadingMsg.className = 'loading-likes';
-            loadingMsg.textContent = 'Loading likes';
-            likeListSection.appendChild(loadingMsg);
-            
-            // Fetch likes from server for this post
-            fetchLikes(postId);
-          });
-        });
-        
-        // Fetch likes from the server
-        async function fetchLikes(postId) {
-          try {
-            console.log('Fetching likes for post:', postId);
-            const encodedPostId = encodeURIComponent(postId);
-            const response = await fetch(`/api/likes/${encodedPostId}`);
-            
-            if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`Server returned ${response.status}: ${errorText}`);
-            }
-            
-            const data = await response.json();
-            console.log('Likes received:', data);
-            
-            // Clear loading message
-            likeListSection.innerHTML = '';
-            
-            // Update like counts
-            const likeCount = data.likes ? data.likes.length : 0;
-            updateLikeCount(postId, likeCount);
-            modalLikeCount.textContent = `(${likeCount})`;
-            
-            if (data.likes && data.likes.length > 0) {
-              // Display likes
-              data.likes.forEach(like => {
-                const likeElement = createLikeElement(like.username);
-                likeListSection.appendChild(likeElement);
-              });
-            } else {
-              // Show no likes message
-              const noLikesMsg = document.createElement('div');
-              noLikesMsg.className = 'no-likes-message';
-              noLikesMsg.textContent = 'No likes yet. Be the first to like!';
-              likeListSection.appendChild(noLikesMsg);
-            }
-          } catch (error) {
-            console.error('Error fetching likes:', error);
-            likeListSection.innerHTML = `<div class="error-message">Failed to load likes: ${error.message}</div>`;
-            modalLikeCount.textContent = '(0)';
-          }
-        }
-        
-        // Helper function to create like element
-        function createLikeElement(username) {
-          const likeElement = document.createElement('div');
-          likeElement.className = 'like-item';
-          likeElement.innerHTML = `
-            <div class="like-username">${username}</div>
-          `;
-          return likeElement;
-        }
-        
-        // Update like count for a specific post
-        function updateLikeCount(postId, count) {
-          const countElement = document.querySelector(`.like-count[data-post-id="${postId}"]`);
-          if (countElement) {
-            countElement.textContent = count;
-          }
-        }
-        
-        // Close like modal
-        function closeLikeModal() {
-          likeModal.style.display = 'none';
-          currentLikePostId = null;
-        }
-        
-        closeLikeBtn.addEventListener('click', closeLikeModal);
-        
-        // Close modal when clicking outside
-        likeModal.addEventListener('click', function(e) {
-          if (e.target === likeModal) {
-            closeLikeModal();
-          }
-        });
-        
-        // Initialize like counts and states on page load
-        function initializeLikes() {
-          const likeCountElements = document.querySelectorAll('.like-count');
-          const likeBtns = document.querySelectorAll('.like-btn');
-          
-          console.log('Initializing likes for', likeCountElements.length, 'posts');
-          
-          // Process each post
-          likeCountElements.forEach(async (countElement, index) => {
-            const postId = countElement.dataset.postId;
-            if (postId) {
-              try {
-                console.log('Fetching initial like data for post:', postId);
-                const encodedPostId = encodeURIComponent(postId);
-                const response = await fetch(`/api/likes/${encodedPostId}`);
-                
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  console.error(`Server returned ${response.status} for post ${postId}:`, errorText);
-                  return;
-                }
-                
-                const data = await response.json();
-                console.log('Initial like data received for post', postId, ':', data);
-                
-                // Update count
-                const likeCount = data.likes ? data.likes.length : 0;
-                countElement.textContent = likeCount;
-                
-                // Check if current user liked this post
-                if (data.userLiked) {
-                  const likeBtn = document.querySelector(`.like-btn[data-post-id="${postId}"]`) ||
-                    document.querySelector(`li[data-post-id="${postId}"] .like-btn`);
-                  if (likeBtn) {
-                    console.log('User previously liked post:', postId, 'updating button state');
-                    likeBtn.src = window.location.origin + '/assets/Liked_Icon.png';
-                    likeBtn.alt = 'Unlike';
-                    likeBtn.dataset.liked = 'true';
-                    console.log('Set liked image:', likeBtn.src);
+                            // Close modal when clicking outside
+                commentModal.addEventListener('click', function (e) {
+                  if (e.target === commentModal) {
+                    closeCommentModal();
                   }
+                });
+
+                // Handle editing a comment
+                async function handleEditComment(commentId, currentText) {
+                  console.log('Editing comment:', commentId);
+
+                  // Show edit comment modal
+                  const editCommentModal = document.getElementById('edit-comment-modal');
+                  const editCommentTextarea = document.getElementById('edit-comment-text');
+                  const commentIdInput = document.getElementById('edit-comment-id');
+                  const postIdInput = document.getElementById('edit-comment-post-id');
+
+                  // Set current values
+                  editCommentTextarea.value = currentText;
+                  commentIdInput.value = commentId;
+                  postIdInput.value = currentPostId;
+
+                  // Show the modal
+                  editCommentModal.style.display = 'block';
+                  editCommentTextarea.focus();
                 }
-              } catch (error) {
-                console.error(`Error fetching like data for post ${postId}:`, error);
-              }
-            }
-          });
-        }
-        
-        // Initialize likes
-        initializeLikes();
-      }
-      
-      // Start like functionality initialization
-      initializeLikeFunctionality();
+
+                // Handle deleting a comment
+                async function handleDeleteComment(commentId) {
+                  console.log('Opening delete confirmation for comment:', commentId);
+
+                  // Set the comment ID in the hidden input
+                  document.getElementById('delete-comment-id').value = commentId;
+                  document.getElementById('delete-comment-post-id').value = currentPostId;
+
+                  // Show the modal
+                  const deleteConfirmModal = document.getElementById('delete-confirm-modal');
+                  deleteConfirmModal.style.display = 'block';
+                }
+
+                // Post comment button
+                const postCommentBtn = document.querySelector('.comment-actions .modal-btn:last-child');
+                postCommentBtn.addEventListener('click', async function () {
+                  const commentTextarea = document.querySelector('.comment-input-section textarea');
+                  const commentText = commentTextarea.value;
+
+                  if (commentText.trim() === '' || !currentPostId) {
+                    console.log('Empty comment or no post ID');
+                    return;
+                  }
+
+                  console.log('Posting comment to post:', currentPostId);
+
+                  try {
+                    // Show posting indicator
+                    postCommentBtn.disabled = true;
+                    postCommentBtn.textContent = 'Posting...';
+
+                    // Send comment to server
+                    const response = await fetch('/api/comments', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        postId: currentPostId,
+                        text: commentText
+                      })
+                    });
+
+                    console.log('Response status:', response.status);
+
+                    if (!response.ok) {
+                      const errorData = await response.text();
+                      console.error('Server error response:', errorData);
+                      throw new Error(`Server returned ${response.status}: ${errorData}`);
+                    }
+
+                    const newComment = await response.json();
+                    console.log('Comment posted successfully:', newComment);
+
+                    // Clear any "no comments" message
+                    const noCommentsMsg = commentListSection.querySelector('.no-comments-message');
+                    if (noCommentsMsg) {
+                      commentListSection.removeChild(noCommentsMsg);
+                    }
+
+                    // Add to UI
+                    const newCommentElement = createCommentElement(newComment);
+                    commentListSection.prepend(newCommentElement);
+
+                    // Clear the input
+                    commentTextarea.value = '';
+
+                    // Update comment count
+                    const currentCount = parseInt(modalCommentCount.textContent.replace(/[()]/g, '')) || 0;
+                    const newCount = currentCount + 1;
+                    modalCommentCount.textContent = `(${newCount})`;
+                    updateCommentCount(currentPostId, newCount);
+
+                  } catch (error) {
+                    console.error('Error posting comment:', error);
+                    alert(`Failed to post comment: ${error.message}`);
+                  } finally {
+                    // Reset button state
+                    postCommentBtn.disabled = false;
+                    postCommentBtn.textContent = 'Post Comment';
+                  }
+                });
+
+                // Initialize comment counts on page load
+                function initializeCommentCounts() {
+                  const commentCountElements = document.querySelectorAll('.comment-count');
+                  commentCountElements.forEach(async countElement => {
+                    const postId = countElement.dataset.postId;
+                    if (postId) {
+                      try {
+                        const encodedPostId = encodeURIComponent(postId);
+                        const response = await fetch(`/api/comments/${encodedPostId}`);
+
+                        if (response.ok) {
+                          const data = await response.json();
+                          const commentCount = data.comments ? data.comments.length : 0;
+                          countElement.textContent = commentCount;
+                        }
+                      } catch (error) {
+                        console.error(`Error fetching comment count for post ${postId}:`, error);
+                      }
+                    }
+                  });
+                }
+
+                // Initialize comment counts when page loads
+                initializeCommentCounts();
+
+                // Setup edit comment modal functionality
+                const editCommentModal = document.getElementById('edit-comment-modal');
+                const closeEditCommentBtn = document.getElementById('close-edit-comment-modal');
+                const cancelEditCommentBtn = document.getElementById('cancel-edit-comment-btn');
+                const editCommentForm = document.getElementById('edit-comment-form');
+
+                // Close edit comment modal function
+                function closeEditCommentModal() {
+                  editCommentModal.style.display = 'none';
+                }
+
+                // Close edit comment modal when X button is clicked
+                if (closeEditCommentBtn) {
+                  closeEditCommentBtn.addEventListener('click', closeEditCommentModal);
+                }
+
+                // Close edit comment modal when cancel button is clicked
+                if (cancelEditCommentBtn) {
+                  cancelEditCommentBtn.addEventListener('click', closeEditCommentModal);
+                }
+
+                // Close edit comment modal when clicking outside
+                window.addEventListener('click', function (e) {
+                  if (e.target === editCommentModal) {
+                    closeEditCommentModal();
+                  }
+                });
+
+                // Handle edit comment form submission
+                if (editCommentForm) {
+                editCommentForm.addEventListener('submit', async function (e) {
+                  e.preventDefault();
+
+                  const commentId = document.getElementById('edit-comment-id').value;
+                  const postId = document.getElementById('edit-comment-post-id').value;
+                  const commentText = document.getElementById('edit-comment-text').value.trim();
+
+                  if (!commentText) {
+                    alert('Comment cannot be empty');
+                    return;
+                  }
+
+                  try {
+                    // Submit the edited comment
+                    const response = await fetch(`/api/comments/${postId}/${commentId}`, {
+                      method: 'PUT',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        text: commentText
+                      })
+                    });
+
+                    if (!response.ok) {
+                      const errorText = await response.text();
+                      throw new Error(`Server returned ${response.status}: ${errorText}`);
+                    }
+
+                    const updatedComment = await response.json();
+                    console.log('Comment updated successfully:', updatedComment);
+
+                    // Update the comment in the UI
+                    const commentElement = document.querySelector(`.comment-item[data-comment-id="${commentId}"]`);
+                    if (commentElement) {
+                      const commentTextElement = commentElement.querySelector('.comment-text');
+                      const needsTruncation = commentText.length > 150;
+
+                      if (commentTextElement) {
+                        // Remove existing classes and set them based on the new state
+                        commentTextElement.className = 'comment-text';
+                        if (needsTruncation) {
+                          commentTextElement.classList.add('truncated-text');
+                        }
+                        commentTextElement.textContent = commentText;
+                      }
+
+                    // Handle see more button
+                    let seeMoreBtn = commentElement.querySelector('.comment-see-more');
+
+                    if (needsTruncation) {
+                      if (!seeMoreBtn) {
+                        // Create new see more button if it doesn't exist
+                        seeMoreBtn = document.createElement('span');
+                        seeMoreBtn.className = 'comment-see-more';
+                        seeMoreBtn.textContent = 'See more...';
+
+                      // Add see more functionality
+                      seeMoreBtn.addEventListener('click', function () {
+                        commentTextElement.classList.toggle('expanded');
+                        this.textContent = commentTextElement.classList.contains('expanded') ? 'See less' : 'See more...';
+                      });
+
+                        // Insert after the comment text element
+                        commentTextElement.after(seeMoreBtn);
+                      }
+                    } else if (seeMoreBtn) {
+                      // Remove see more button if it's not needed anymore
+                      seeMoreBtn.remove();
+                    }
+                  }
+
+                  // Close the modal
+                  closeEditCommentModal();
+
+                } catch (error) {
+                  console.error('Error updating comment:', error);
+                  alert(`Failed to update comment: ${error.message}`);
+                }
+              });
+                        }
+
+                        // Like Modal Functionality - Check if like API is available
+                        async function checkLikeApiAvailability() {
+                          try {
+                            // Try to fetch a test like to see if the API exists
+                            const response = await fetch('/api/likes/test-availability');
+                            // Even if it's a 404 for the specific post, if we get a proper JSON response
+                            // with an error message about the post not found, the API itself exists
+                            const isAvailable = response.status !== 404 || (await response.text()).includes('Post ID');
+                            return isAvailable;
+                          } catch (error) {
+                            console.warn('Like API not available:', error);
+                            return false;
+                          }
+                        }
+
+                        // Initialize like functionality
+                        async function initializeLikeFunctionality() {
+                          // Check if the like API is available
+                          const isLikeApiAvailable = await checkLikeApiAvailability();
+                          console.log('Like API available:', isLikeApiAvailable);
+
+                          if (!isLikeApiAvailable) {
+                            // Hide like counts if API is not available
+                            document.querySelectorAll('.like-count').forEach(el => el.style.display = 'none');
+                            return;
+                          }
+
+                          const likeBtns = document.querySelectorAll('.like-btn');
+                          const likeModal = document.querySelector('.like-modal');
+                          const closeLikeBtn = document.querySelector('.close-like-modal');
+                          const likeListSection = document.querySelector('.like-list-section');
+                          const modalLikeCount = document.querySelector('.modal-like-count');
+
+                          // Current post being viewed for likes
+                          let currentLikePostId = null;
+
+                          // Remove any existing event listeners
+                          likeBtns.forEach(btn => {
+                            const newBtn = btn.cloneNode(true);
+                            btn.parentNode.replaceChild(newBtn, btn);
+                          });
+
+                          // Get the fresh references after replacing the buttons
+                          const freshLikeBtns = document.querySelectorAll('.like-btn');
+
+                          // Toggle like status when like icon is clicked
+                          freshLikeBtns.forEach(btn => {
+                            btn.addEventListener('click', async function (e) {
+                              e.preventDefault(); // Prevent any default behavior
+                              e.stopPropagation(); // Stop event propagation
+
+                              const postItem = this.closest('li');
+                              const postId = postItem.dataset.postId;
+                              const isLiked = this.dataset.liked === 'true';
+
+                              console.log('Like button clicked for post:', postId, 'Current liked status:', isLiked);
+
+                        try {
+                          // Send like request to server first
+                          const response = await fetch('/api/likes', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                              postId: postId,
+                              liked: !isLiked
+                            })
+                          });
+
+                          if (!response.ok) {
+                            const errorText = await response.text();
+                            if (handleApiError(response.status, errorText)) return;
+                            throw new Error(`Server returned ${response.status}: ${errorText}`);
+                          }
+
+                          const data = await response.json();
+                          console.log('Like updated:', data);
+
+                          // Only update UI if server request was successful
+                          this.dataset.liked = !isLiked ? 'true' : 'false';
+
+                          // Update icon based on new like status
+                          if (!isLiked) {
+                            this.src = '/assets/Liked_Icon.png';
+                            this.alt = 'Unlike';
+                          } else {
+                            this.src = '/assets/Like_Icon.png';
+                            this.alt = 'Like';
+                          }
+
+                          // Update like count in UI
+                          updateLikeCount(postId, data.likeCount);
+
+                        } catch (error) {
+                          console.error('Error updating like:', error);
+                          alert(`Failed to update like: ${error.message}`);
+                        }
+                      });
+                    });
+
+                          // Show likes modal when clicking on like count
+                          document.querySelectorAll('.like-count').forEach(countElement => {
+                      countElement.addEventListener('click', function () {
+                        const postId = this.dataset.postId;
+                        currentLikePostId = postId;
+                        likeModal.style.display = 'block';
+
+                        // Clear previous likes
+                        likeListSection.innerHTML = '';
+
+                        // Show loading indicator
+                        const loadingMsg = document.createElement('div');
+                        loadingMsg.className = 'loading-likes';
+                        loadingMsg.textContent = 'Loading likes';
+                        likeListSection.appendChild(loadingMsg);
+
+                        // Fetch likes from server for this post
+                        fetchLikes(postId);
+                      });
+                    });
+
+                          // Fetch likes from the server
+                          async function fetchLikes(postId) {
+                            try {
+                              console.log('Fetching likes for post:', postId);
+                              const encodedPostId = encodeURIComponent(postId);
+                              const response = await fetch(`/api/likes/${encodedPostId}`);
+
+                              if (!response.ok) {
+                                const errorText = await response.text();
+                                throw new Error(`Server returned ${response.status}: ${errorText}`);
+                              }
+
+                              const data = await response.json();
+                              console.log('Likes received:', data);
+
+                              // Clear loading message
+                              likeListSection.innerHTML = '';
+
+                              // Update like counts
+                              const likeCount = data.likes ? data.likes.length : 0;
+                              updateLikeCount(postId, likeCount);
+                              modalLikeCount.textContent = `(${likeCount})`;
+
+                              if (data.likes && data.likes.length > 0) {
+                                // Display likes
+                                data.likes.forEach(like => {
+                                  const likeElement = createLikeElement(like.username);
+                                  likeListSection.appendChild(likeElement);
+                                });
+                              } else {
+                                // Show no likes message
+                                const noLikesMsg = document.createElement('div');
+                                noLikesMsg.className = 'no-likes-message';
+                                noLikesMsg.textContent = 'No likes yet. Be the first to like!';
+                                likeListSection.appendChild(noLikesMsg);
+                              }
+                            } catch (error) {
+                              console.error('Error fetching likes:', error);
+                              likeListSection.innerHTML = `<div class="error-message">Failed to load likes: ${error.message}</div>`;
+                              modalLikeCount.textContent = '(0)';
+                            }
+                          }
+
+                          // Helper function to create like element
+                          function createLikeElement(username) {
+                            const likeElement = document.createElement('div');
+                            likeElement.className = 'like-item';
+                            likeElement.innerHTML = `
+          <div class="like-username">${username}</div>
+        `;
+                            return likeElement;
+                          }
+
+                          // Update like count for a specific post
+                          function updateLikeCount(postId, count) {
+                            const countElement = document.querySelector(`.like-count[data-post-id="${postId}"]`);
+                            if (countElement) {
+                              countElement.textContent = count;
+                            }
+                          }
+
+                          // Close like modal
+                          function closeLikeModal() {
+                            likeModal.style.display = 'none';
+                            currentLikePostId = null;
+                          }
+
+                          closeLikeBtn.addEventListener('click', closeLikeModal);
+
+                          // Close modal when clicking outside
+                          likeModal.addEventListener('click', function (e) {
+                            if (e.target === likeModal) {
+                              closeLikeModal();
+                            }
+                          });
+
+                          // Initialize like counts and states on page load
+                          function initializeLikes() {
+                            const likeCountElements = document.querySelectorAll('.like-count');
+                            const likeBtns = document.querySelectorAll('.like-btn');
+
+                            console.log('Initializing likes for', likeCountElements.length, 'posts');
+
+                            // Process each post
+                            likeCountElements.forEach(async (countElement, index) => {
+                              const postId = countElement.dataset.postId;
+                              if (postId) {
+                                try {
+                                  console.log('Fetching initial like data for post:', postId);
+                                  const encodedPostId = encodeURIComponent(postId);
+                                  const response = await fetch(`/api/likes/${encodedPostId}`);
+
+                                  if (!response.ok) {
+                                    const errorText = await response.text();
+                                    console.error(`Server returned ${response.status} for post ${postId}:`, errorText);
+                                    return;
+                                  }
+
+                                  const data = await response.json();
+                                  console.log('Initial like data received for post', postId, ':', data);
+
+                                  // Update count
+                                  const likeCount = data.likes ? data.likes.length : 0;
+                                  countElement.textContent = likeCount;
+
+                                  // Check if current user liked this post
+                                  if (data.userLiked) {
+                                    const likeBtn = document.querySelector(`.like-btn[data-post-id="${postId}"]`) ||
+                                      document.querySelector(`li[data-post-id="${postId}"] .like-btn`);
+                                    if (likeBtn) {
+                                      console.log('User previously liked post:', postId, 'updating button state');
+                                      likeBtn.src = window.location.origin + '/assets/Liked_Icon.png';
+                                      likeBtn.alt = 'Unlike';
+                                      likeBtn.dataset.liked = 'true';
+                                      console.log('Set liked image:', likeBtn.src);
+                                    }
+                                  }
+                                } catch (error) {
+                                  console.error(`Error fetching like data for post ${postId}:`, error);
+                                }
+                              }
+                            });
+                          }
+
+                          // Initialize likes
+                          initializeLikes();
+                        }
+
+                        // Start like functionality initialization
+                        initializeLikeFunctionality();
 
       // Setup delete confirmation modal functionality
       const deleteConfirmModal = document.getElementById('delete-confirm-modal');
@@ -1144,24 +1177,24 @@
                 truncatedText.className = 'truncated-text';
                 truncatedText.textContent = postText;
 
-                const seeMoreBtn = document.createElement('span');
-                seeMoreBtn.className = 'see-more-btn';
-                seeMoreBtn.textContent = 'See more...';
+              const seeMoreBtn = document.createElement('span');
+              seeMoreBtn.className = 'see-more-btn';
+              seeMoreBtn.textContent = 'See more...';
 
-                // If text is less than 150 characters, hide the see more button
-                if (postText.length < 150) {
-                  seeMoreBtn.classList.add('hidden');
-                }
-
-                // Add click event to see more button
-                seeMoreBtn.addEventListener('click', function () {
-                  truncatedText.classList.toggle('expanded');
-                  this.textContent = truncatedText.classList.contains('expanded') ? 'See less' : 'See more...';
-                });
-
-                postContent.appendChild(truncatedText);
-                postContent.appendChild(seeMoreBtn);
+              // If text is less than 150 characters, hide the see more button
+              if (postText.length < 150) {
+                seeMoreBtn.classList.add('hidden');
               }
+
+              // Add click event to see more button
+              seeMoreBtn.addEventListener('click', function () {
+                truncatedText.classList.toggle('expanded');
+                this.textContent = truncatedText.classList.contains('expanded') ? 'See less' : 'See more...';
+              });
+
+              postContent.appendChild(truncatedText);
+              postContent.appendChild(seeMoreBtn);
+            }
 
               tempDiv.appendChild(postContent);
 

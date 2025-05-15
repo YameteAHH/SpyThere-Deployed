@@ -2,7 +2,7 @@ import express from 'express';
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, set, push, get, child, update, remove } from 'firebase/database';
 import multer from 'multer';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListBucketsCommand } from '@aws-sdk/client-s3';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
@@ -16,6 +16,13 @@ const MemoryStoreSession = MemoryStore(session);
 
 // Load environment variables
 dotenv.config();
+
+// Detect environment
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+console.log(`Running in ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
+if (isProduction) {
+  console.log('Configuring for production environment on Vercel');
+}
 
 // Get current directory for correct file paths in different environments
 const __filename = fileURLToPath(import.meta.url);
@@ -49,12 +56,15 @@ app.use(session({
   saveUninitialized: false,
   rolling: true, // Reset cookie expiration on every response
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction, // Use secure cookies in production
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     httpOnly: true,
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' // Use 'none' in production for cross-site requests
+    sameSite: isProduction ? 'none' : 'lax' // Enable cross-site cookies in production
   }
 }));
+
+// Add trust proxy setting for Vercel deployment
+app.set('trust proxy', 1); // trust first proxy - REQUIRED for Vercel's reverse proxy setup
 
 // Configure multer for handling file uploads
 const upload = multer({
@@ -91,7 +101,12 @@ async function uploadFileToS3(file) {
 
   console.log(`Uploading file: ${file.originalname} (${file.size} bytes)`);
   console.log(`Using S3 config: region=${S3_CONFIG.region}, bucket=${S3_CONFIG.bucketName}`);
-  console.log(`Using credentials: accessKeyId=${S3_CONFIG.accessKeyId.substring(0, 5)}...`);
+  console.log(`Using credentials: accessKeyId=${S3_CONFIG.accessKeyId ? 'provided' : 'missing'}`);
+
+  // Validate credentials before attempting upload
+  if (!S3_CONFIG.accessKeyId || !S3_CONFIG.secretAccessKey) {
+    throw new Error('AWS credentials are missing. Check your environment variables.');
+  }
 
   try {
     const s3Client = new S3Client({
@@ -106,18 +121,24 @@ async function uploadFileToS3(file) {
     // Log configuration details for debugging
     console.log(`S3 client configured with region: ${S3_CONFIG.region}`);
     console.log(`Using bucket: ${S3_CONFIG.bucketName}`);
-    console.log(`Credentials loaded: ${!!S3_CONFIG.accessKeyId && !!S3_CONFIG.secretAccessKey}`);
 
     const uploadParams = {
       Bucket: S3_CONFIG.bucketName,
       Key: key,
       Body: file.buffer,
-      ContentType: file.mimetype,
-      ACL: 'public-read' // Makes the file publicly accessible
+      ContentType: file.mimetype
     };
 
-    console.log(`Uploading to S3 bucket: ${S3_CONFIG.bucketName} in region ${S3_CONFIG.region}`);
-    const uploadResult = await s3Client.send(new PutObjectCommand(uploadParams));
+    console.log('Starting S3 upload with params:', {
+      Bucket: uploadParams.Bucket,
+      Key: uploadParams.Key,
+      ContentType: uploadParams.ContentType,
+      BodySize: file.buffer.length
+    });
+
+    const uploadCommand = new PutObjectCommand(uploadParams);
+    const uploadResult = await s3Client.send(uploadCommand);
+
     console.log('S3 upload successful!', uploadResult);
 
     // Construct the media URL based on region and bucket
@@ -133,18 +154,22 @@ async function uploadFileToS3(file) {
 
     return mediaUrl;
   } catch (error) {
-    console.error('S3 upload error:', error);
+    console.error('S3 upload error details:', {
+      message: error.message,
+      code: error.Code || error.code,
+      region: S3_CONFIG.region,
+      bucket: S3_CONFIG.bucketName
+    });
 
-    // Enhanced error logging
-    if (error.Code) console.error('AWS Error Code:', error.Code);
-    if (error.message) console.error('Error message:', error.message);
-    if (error.$metadata) {
-      console.error('Error metadata:', JSON.stringify(error.$metadata));
-      console.error('Request ID:', error.$metadata.requestId);
-      console.error('HTTP Status Code:', error.$metadata.httpStatusCode);
+    if (error.message.includes('The bucket you are attempting to access must be addressed using the specified endpoint')) {
+      throw new Error(`Region mismatch. Your bucket is not in the specified region (${S3_CONFIG.region})`);
     }
 
-    throw new Error(`Failed to upload media: ${error.message}`);
+    if (error.message.includes('no identity-based policy allows the s3:PutObject action')) {
+      throw new Error('The AWS user lacks permission to upload to this bucket. Check IAM policy permissions.');
+    }
+
+    throw error;
   }
 }
 
@@ -185,6 +210,7 @@ function authenticator(req, res, next) {
   console.log(`Session ID: ${req.session?.id || 'no session'}`);
   console.log(`Session cookie: ${req.session?.cookie ? 'exists' : 'missing'}`);
   console.log(`Has user object: ${!!(req.session && req.session.user)}`);
+  console.log(`Request cookies: ${req.headers.cookie || 'none'}`);
 
   try {
     if (req.session && req.session.user && req.session.user.username) {
@@ -196,46 +222,44 @@ function authenticator(req, res, next) {
         req.session._garbage = Date.now();
         req.session.cookie.expires = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000));
 
-        // For important operations, save the session immediately
-        if (req.method === 'POST' || req.path.includes('/api/')) {
-          req.session.save(err => {
-            if (err) {
-              console.error('Warning: Error saving session during authentication:', err);
-              // Continue despite error to avoid breaking functionality
-            }
-          });
-        }
+        // For important operations, save the session immediately to prevent loss
+        req.session.save(err => {
+          if (err) {
+            console.error('Error saving session in authenticator:', err);
+          }
+        });
       } catch (sessionError) {
         console.error('Error updating session in authenticator:', sessionError);
-        // Continue despite error
       }
 
-      next();
-    } else {
-      // For API requests, return JSON error
-      if (req.path.startsWith('/api/') && !req.path.includes('/api/session-status')) {
-        console.log('API authentication failed');
-        return res.status(401).json({
-          error: 'Authentication required',
-          redirect: '/login'
-        });
-      }
-
-      // For page requests, redirect to login
-      console.log('Redirecting to login page');
-      res.redirect('/login');
+      return next();
     }
-  } catch (error) {
-    console.error('Unexpected error in authenticator middleware:', error);
-    // For API requests
+
+    console.log('Authentication failed - no valid session');
+
+    // Check if this is an API request
     if (req.path.startsWith('/api/')) {
-      return res.status(500).json({
-        error: 'Authentication error',
-        details: error.message
+      return res.status(401).json({
+        error: 'Authentication required',
+        redirect: '/login'
       });
     }
-    // For page requests
-    res.redirect('/login');
+
+    // For regular page requests, redirect to login
+    return res.redirect('/login?redirectTo=' + encodeURIComponent(req.originalUrl));
+  } catch (error) {
+    console.error('Error in authenticator middleware:', error);
+
+    // Handle as an API request if path starts with /api
+    if (req.path.startsWith('/api/')) {
+      return res.status(500).json({
+        error: 'Server error during authentication',
+        message: error.message
+      });
+    }
+
+    // Otherwise redirect to login
+    return res.redirect('/login');
   }
 }
 
@@ -380,8 +404,9 @@ app.post('/submit-post', upload.single('media'), async (req, res) => {
     console.log('Starting post submission process');
     console.log('Session ID:', req.session?.id);
     console.log('Session user:', req.session?.user);
+    console.log('Request cookies:', req.headers.cookie || 'none');
 
-    // Check authentication
+    // Check authentication 
     if (!req.session || !req.session.user) {
       console.error('Session validation failed in submit-post');
       return res.status(401).json({
@@ -390,46 +415,38 @@ app.post('/submit-post', upload.single('media'), async (req, res) => {
       });
     }
 
+    // Save session immediately to prevent loss during upload
+    await new Promise((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) {
+          console.error('Error saving session before media upload:', err);
+          // Continue despite the error
+        }
+        resolve();
+      });
+    });
+
     const username = req.session.user.username;
     console.log(`Processing post submission from user: ${username}`);
     console.log('Request body:', req.body);
     console.log('File:', req.file ? `${req.file.originalname} (${req.file.size} bytes)` : 'No file uploaded');
 
-    // Explicitly extend the session
-    req.session.cookie.expires = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000));
-
-    // Save session before starting upload
-    await new Promise((resolve, reject) => {
-      req.session.save(err => {
-        if (err) {
-          console.error('Error saving session before media upload:', err);
-          reject(err);
-        } else {
-          console.log('Session saved successfully before upload');
-          resolve();
-        }
-      });
-    });
-
-    const post = req.body.post || '';
     let mediaUrl = null;
-
-    // Upload media file to S3 if one was provided
+    // Upload media to S3 if provided
     if (req.file) {
       try {
         mediaUrl = await uploadFileToS3(req.file);
-        console.log('Media uploaded to S3:', mediaUrl);
       } catch (uploadError) {
-        console.error('Media upload failed:', uploadError.message);
+        console.error('Media upload failed:', uploadError);
         return res.status(500).json({
           error: 'Media upload failed',
-          details: uploadError.message
+          details: `Failed to upload media: ${uploadError.message}`
         });
       }
     }
 
     // Validate post content - require either text or media
-    if (post.trim() === '' && !mediaUrl) {
+    if (req.body.post.trim() === '' && !mediaUrl) {
       return res.status(400).json({
         error: 'Post content required',
         details: 'Please provide either text content or a media file'
@@ -439,7 +456,7 @@ app.post('/submit-post', upload.single('media'), async (req, res) => {
     // Save post to Firebase
     console.log('Saving post to database...');
     const newPost = {
-      post: post.trim(),
+      post: req.body.post.trim(),
       username: username,
       mediaUrl: mediaUrl,
       timestamp: Date.now()
@@ -447,19 +464,6 @@ app.post('/submit-post', upload.single('media'), async (req, res) => {
 
     await push(postsRef, newPost);
     console.log('Post saved successfully');
-
-    // Save the session again after the post has been saved
-    await new Promise((resolve, reject) => {
-      req.session.save(err => {
-        if (err) {
-          console.error('Error saving session after post creation:', err);
-          reject(err);
-        } else {
-          console.log('Session saved successfully after post creation');
-          resolve();
-        }
-      });
-    });
 
     // Redirect or return success response
     if (req.xhr || req.headers.accept.indexOf('json') > -1) {
@@ -1144,6 +1148,11 @@ app.get('/api/session-status', (req, res) => {
   console.log('Session cookie:', req.session?.cookie);
   console.log('User object:', req.session?.user);
 
+  // Additional debug info for troubleshooting
+  console.log('Client cookies:', req.headers.cookie);
+  console.log('isProduction:', isProduction);
+  console.log('Request headers:', JSON.stringify(req.headers));
+
   if (req.session && req.session.user) {
     // Touch the session to keep it alive
     try {
@@ -1166,7 +1175,9 @@ app.get('/api/session-status', (req, res) => {
       cookieMaxAge: req.session.cookie.maxAge,
       cookieExpires: req.session.cookie.expires,
       secure: req.session.cookie.secure,
-      sameSite: req.session.cookie.sameSite
+      sameSite: req.session.cookie.sameSite,
+      environment: isProduction ? 'production' : 'development',
+      host: req.headers.host
     });
   } else {
     // Not authenticated
@@ -1174,14 +1185,53 @@ app.get('/api/session-status', (req, res) => {
       authenticated: false,
       message: 'User not authenticated',
       sessionExists: !!req.session,
-      cookieHeader: req.headers.cookie ? 'Present' : 'Missing'
+      cookieHeader: req.headers.cookie ? 'Present' : 'Missing',
+      environment: isProduction ? 'production' : 'development',
+      host: req.headers.host
     });
   }
 });
 
-// If this file is executed directly (not imported), start the server
-// The previous condition might not work reliably on Windows
-// if (import.meta.url === `file://${process.argv[1]}`) {
+// Add troubleshooting endpoint for session diagnosis
+app.get('/session-debug', (req, res) => {
+  // Create a debug session with minimal data
+  if (!req.session.debug) {
+    req.session.debug = {
+      created: new Date().toISOString(),
+      count: 1
+    };
+  } else {
+    req.session.debug.count++;
+    req.session.debug.lastAccess = new Date().toISOString();
+  }
+
+  // Ensure session is saved
+  req.session.save((err) => {
+    if (err) {
+      console.error('Error saving debug session:', err);
+    }
+
+    res.json({
+      success: true,
+      sessionInfo: {
+        id: req.session.id,
+        debug: req.session.debug,
+        cookie: {
+          maxAge: req.session.cookie.maxAge,
+          expires: req.session.cookie.expires,
+          secure: req.session.cookie.secure,
+          httpOnly: req.session.cookie.httpOnly,
+          sameSite: req.session.cookie.sameSite
+        }
+      },
+      environment: isProduction ? 'production' : 'development',
+      cookies: req.headers.cookie,
+      host: req.headers.host,
+      protocol: req.protocol,
+      secure: req.secure
+    });
+  });
+});
 
 // Always start the server when this file is run directly
 const server = app.listen(port, () => {
@@ -1193,7 +1243,77 @@ const server = app.listen(port, () => {
   console.log(`AWS Region: ${process.env.AWS_REGION || 'not set'}`);
   console.log(`S3 Bucket: ${process.env.AWS_S3_BUCKET_NAME || 'not set'}`);
   console.log(`AWS Credentials loaded: ${!!process.env.AWS_ACCESS_KEY_ID && !!process.env.AWS_SECRET_ACCESS_KEY}`);
+
+  // Verify all production settings when in production
+  if (isProduction) {
+    verifyProductionSettings();
+  }
 });
+
+// Function to verify all production settings
+async function verifyProductionSettings() {
+  console.log('Verifying production settings...');
+
+  // Verify session configuration
+  console.log('Session configuration:');
+  console.log('- Cookie secure:', app.get('trust proxy') ? 'Enabled' : 'Disabled');
+  console.log('- Cookie sameSite:', 'none');
+  console.log('- Trust proxy:', app.get('trust proxy') ? 'Enabled' : 'Disabled');
+
+  // Verify critical environment variables
+  const requiredEnvVars = {
+    'AWS_REGION': process.env.AWS_REGION,
+    'AWS_S3_BUCKET_NAME': process.env.AWS_S3_BUCKET_NAME,
+    'AWS_ACCESS_KEY_ID': !!process.env.AWS_ACCESS_KEY_ID,
+    'AWS_SECRET_ACCESS_KEY': !!process.env.AWS_SECRET_ACCESS_KEY,
+    'SESSION_SECRET': !!process.env.SESSION_SECRET
+  };
+
+  console.log('Environment variables check:');
+  let allVarsPresent = true;
+  for (const [name, value] of Object.entries(requiredEnvVars)) {
+    const status = value ? 'OK' : 'MISSING';
+    console.log(`- ${name}: ${status}`);
+    if (!value) allVarsPresent = false;
+  }
+
+  if (!allVarsPresent) {
+    console.warn('WARNING: Missing critical environment variables in production!');
+    console.warn('This may cause application features to fail.');
+  }
+
+  // Verify AWS S3 configuration if credentials exist
+  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    try {
+      console.log('Testing S3 connectivity...');
+      const s3Client = new S3Client({
+        region: process.env.AWS_REGION || 'ap-southeast-2',
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+        }
+      });
+
+      const response = await s3Client.send(new ListBucketsCommand({}));
+      console.log('S3 connection test: SUCCESS');
+      console.log(`Available buckets: ${response.Buckets.map(b => b.Name).join(', ')}`);
+
+      // Check if the configured bucket exists
+      const bucketName = process.env.AWS_S3_BUCKET_NAME;
+      const bucketExists = response.Buckets.some(b => b.Name === bucketName);
+      if (bucketExists) {
+        console.log(`Configured bucket '${bucketName}' exists and is accessible`);
+      } else {
+        console.warn(`WARNING: Configured bucket '${bucketName}' does not exist or is not accessible`);
+      }
+    } catch (error) {
+      console.error('S3 connectivity test: FAILED');
+      console.error(`Error: ${error.message}`);
+    }
+  }
+
+  console.log('Production settings verification complete.');
+}
 
 // For clean shutdown
 process.on('SIGTERM', () => {
